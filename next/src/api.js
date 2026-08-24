@@ -133,6 +133,42 @@ export function overspeedText(event) {
   return 'превышение скорости';
 }
 
+// типы событий: подпись, класс тега и текст строки
+export const EVENT_KINDS = {
+  deviceOverspeed: { type: 'Скорость', tagClass: 'tag tag-outline', text: (e) => overspeedText(e) },
+  geofenceExit: { type: 'Геозона', tagClass: 'tag tag-accent-2', text: (e, zones) => `выезд из геозоны${zones?.[e.geofenceId] ? ` «${zones[e.geofenceId]}»` : ''}` },
+  geofenceEnter: { type: 'Геозона', tagClass: 'tag tag-accent-2', text: (e, zones) => `въезд в геозону${zones?.[e.geofenceId] ? ` «${zones[e.geofenceId]}»` : ''}` },
+  deviceFuelDrop: { type: 'Топливо', tagClass: 'tag tag-outline', text: () => 'резкое падение уровня топлива' },
+  deviceFuelIncrease: { type: 'Топливо', tagClass: 'tag tag-accent', text: () => 'заправка' },
+  deviceOffline: { type: 'Связь', tagClass: 'tag tag-neutral', text: () => 'потеря связи' },
+  deviceUnknown: { type: 'Связь', tagClass: 'tag tag-neutral', text: () => 'нет данных от трекера' },
+  deviceOnline: { type: 'Связь', tagClass: 'tag tag-accent', text: () => 'снова на связи' },
+  deviceMoving: { type: 'Движение', tagClass: 'tag tag-accent', text: () => 'начало движения' },
+  deviceStopped: { type: 'Движение', tagClass: 'tag tag-accent-2', text: () => 'остановка' },
+  ignitionOn: { type: 'Зажигание', tagClass: 'tag tag-accent', text: () => 'зажигание включено' },
+  ignitionOff: { type: 'Зажигание', tagClass: 'tag tag-accent-2', text: () => 'зажигание выключено' },
+  alarm: { type: 'Тревога', tagClass: 'tag tag-outline', text: (e) => `тревога: ${alarmName(e.attributes?.alarm)}` },
+  fuelLow: { type: 'Топливо', tagClass: 'tag tag-outline', text: (e) => e.message },
+  towing: { type: 'Эвакуатор', tagClass: 'tag tag-outline', text: (e) => e.message },
+};
+
+export const eventKind = (type) => EVENT_KINDS[type] ?? { type, tagClass: 'tag tag-neutral', text: () => '' };
+
+// критичные по умолчанию — пока клиент не настроил своё
+export const DEFAULT_CRITICAL = new Set(['alarm', 'towing', 'fuelLow']);
+
+// настройки клиента: показывать ли тип и считать ли его критичным
+export function alertPrefs(user) {
+  const prefs = user?.prefs?.alerts ?? {};
+  const zones = user?.prefs?.geofenceExit ?? {};
+  const zoneMode = (e) => (e.type === 'geofenceExit' ? zones[e.geofenceId] : undefined);
+  return {
+    zoneMode,
+    show: (e) => (zoneMode(e) === 'hidden' ? false : (prefs[e.type]?.show ?? true) || zoneMode(e) === 'critical'),
+    critical: (e) => (zoneMode(e) ? zoneMode(e) === 'critical' : prefs[e.type]?.critical ?? DEFAULT_CRITICAL.has(e.type)),
+  };
+}
+
 export function vehicleState(device, position) {
   const speed = position ? Math.round(position.speed * KNOTS_TO_KMH) : 0;
   if (device.status !== 'online') return { st: 'off', speed: 0 };
@@ -185,4 +221,54 @@ export function startOfDay(date = new Date()) {
 export function localDate(date = new Date()) {
   const p = (n) => String(n).padStart(2, '0');
   return `${date.getFullYear()}-${p(date.getMonth() + 1)}-${p(date.getDate())}`;
+}
+
+// последние N дней для выбора: [YYYY-MM-DD, 'Пт', '21 авг']
+export const lastDays = (count = 7) => Array.from({ length: count }, (_, i) => {
+  const d = new Date();
+  d.setDate(d.getDate() - (count - 1 - i));
+  return [
+    localDate(d),
+    d.toLocaleDateString('ru-RU', { weekday: 'short' }),
+    d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }),
+  ];
+});
+
+// «2 ч 52 мин»
+export const hm = (ms) => {
+  const min = Math.round((ms ?? 0) / 60000);
+  return min >= 60 ? `${Math.floor(min / 60)} ч ${min % 60} мин` : `${min} мин`;
+};
+
+// до 10 км — с десятыми, дальше целые
+export const kmLabel = (meters) => (meters >= 10000
+  ? Math.round(meters / 1000)
+  : Math.round((meters ?? 0) / 100) / 10);
+
+// в движении / на стоянке за день — суммы по ленте getDeviceTimeline
+export function timelineSummary(rows) {
+  if (!rows?.length) return null;
+  const sum = (type) => rows.filter((s) => s.type === type).reduce((acc, s) => acc + s.duration, 0);
+  return { driveMs: sum('trip'), parkMs: sum('park'), trips: rows.filter((s) => s.type === 'trip').length };
+}
+
+// телеметрия трекера: [иконка, подпись, значение] — пустые поля отброшены
+export function telemetryFacts(device, position) {
+  const a = position?.attributes ?? {};
+  const volts = (x) => `${Math.round(x * 10) / 10} В`;
+  const yesNo = (x) => (x ? 'Вкл' : 'Выкл');
+  const fuel = fuelLevel(position);
+  const liters = fuelLiters(position);
+  const updated = position?.deviceTime ?? device?.lastUpdate;
+  return [
+    ['cpu', 'Модель', device?.model],
+    ['user', 'Водитель', device?.attributes?.driver ?? device?.contact],
+    ['satellite', 'Спутники', a.sat],
+    ['key', 'Зажигание', a.ignition != null ? yesNo(a.ignition) : null],
+    ['navigation', 'Движение', a.motion != null ? yesNo(a.motion) : null],
+    ['zap', 'Питание', a.power != null ? volts(a.power) : null],
+    ['battery-medium', 'Батарея', a.battery != null ? volts(a.battery) : null],
+    ['fuel', 'Топливо', fuel != null ? `${fuel}%${liters != null ? ` · ${liters} л` : ''}` : null],
+    ['clock', 'Обновлено', updated ? `${formatTime(updated)} (${timeAgo(updated)})` : null],
+  ].filter((f) => f[2] != null && f[2] !== '');
 }

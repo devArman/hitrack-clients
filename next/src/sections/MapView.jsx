@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import LeafletMap from '../LeafletMap';
 import {
-  deviceEmoji, formatTime, fuelLevel, fuelLiters, getDeviceGroups,
-  getDeviceStats, getDeviceTimeline, getJson, getRoute, KNOTS_TO_KMH,
-  localDate, sendCommand, timeAgo,
+  deviceEmoji, fuelLevel, fuelLiters, getDeviceGroups,
+  getDeviceStats, getDeviceTimeline, getJson, getRoute, hm, kmLabel, KNOTS_TO_KMH,
+  lastDays, localDate, sendCommand, telemetryFacts, timeAgo, timelineSummary,
 } from '../api';
 import GroupDialog from './GroupDialog';
 import { ConfirmDialog, Icon, StatusDot } from '../ui';
@@ -16,27 +16,6 @@ const CONN = [
 ];
 
 const tripTime = (value) => new Date(value).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-
-const kmLabel = (meters) => (meters >= 10000
-  ? Math.round(meters / 1000)
-  : Math.round(meters / 100) / 10);
-
-// последние 7 дней для выбора: [YYYY-MM-DD, 'Пт', '21 авг']
-const lastDays = (count = 7) => Array.from({ length: count }, (_, i) => {
-  const d = new Date();
-  d.setDate(d.getDate() - (count - 1 - i));
-  return [
-    localDate(d),
-    d.toLocaleDateString('ru-RU', { weekday: 'short' }),
-    d.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }),
-  ];
-});
-
-// 2 ч 52 мин
-const hm = (ms) => {
-  const min = Math.round(ms / 60000);
-  return min >= 60 ? `${Math.floor(min / 60)} ч ${min % 60} мин` : `${min} мин`;
-};
 
 export default function MapView({ vehicles, devices, positions, focus, mapGroupPreset }) {
   const [localFocus, setLocalFocus] = useState(focus);
@@ -304,10 +283,6 @@ export default function MapView({ vehicles, devices, positions, focus, mapGroupP
 function DetailPanel({ v, stat, onClose, timeline, activeTrip, onLoadTimeline, onPickTrip }) {
   const p = v.position;
   const a = p?.attributes ?? {};
-  const fuel = fuelLevel(p);
-  const liters = fuelLiters(p);
-  const volts = (x) => `${Math.round(x * 10) / 10} В`;
-  const yesNo = (x) => (x ? 'Вкл' : 'Выкл');
 
   // выбранный день (как в Wialon — лента одного дня)
   const [day, setDay] = useState(() => localDate());
@@ -345,13 +320,10 @@ function DetailPanel({ v, stat, onClose, timeline, activeTrip, onLoadTimeline, o
   const shownStat = fetched;
 
   // сводка дня: сколько в движении и сколько на стоянке
-  const summary = useMemo(() => {
-    if (!timeline || timeline.loading || !timeline.rows.length) return null;
-    const sum = (type) => timeline.rows
-      .filter((s) => s.type === type)
-      .reduce((acc, s) => acc + s.duration, 0);
-    return { driveMs: sum('trip'), parkMs: sum('park') };
-  }, [timeline]);
+  const summary = useMemo(
+    () => (timeline && !timeline.loading ? timelineSummary(timeline.rows) : null),
+    [timeline],
+  );
 
   // блокировка двигателя — та же логика, что в разделе «Двигатель»
   const blocked = Boolean(a.blocked);
@@ -388,18 +360,7 @@ function DetailPanel({ v, stat, onClose, timeline, activeTrip, onLoadTimeline, o
     }
   };
 
-  const upd = p?.deviceTime ?? v.device.lastUpdate;
-  const facts = [
-    ['cpu', 'Модель', v.device.model],
-    ['user', 'Водитель', v.device.attributes?.driver ?? v.device.contact],
-    ['satellite', 'Спутники', a.sat],
-    ['key', 'Зажигание', a.ignition != null ? yesNo(a.ignition) : null],
-    ['navigation', 'Движение', a.motion != null ? yesNo(a.motion) : null],
-    ['zap', 'Питание', a.power != null ? volts(a.power) : null],
-    ['battery-medium', 'Батарея', a.battery != null ? volts(a.battery) : null],
-    ['fuel', 'Топливо', fuel != null ? `${fuel}%${liters != null ? ` · ${liters} л` : ''}` : null],
-    ['clock', 'Обновлено', upd ? `${formatTime(upd)} (${timeAgo(upd)})` : null],
-  ].filter((f) => f[2] != null && f[2] !== '');
+  const facts = telemetryFacts(v.device, p);
 
   return (
     <div

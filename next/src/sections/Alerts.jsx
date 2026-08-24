@@ -1,22 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { alarmName, formatTime, getAlerts, getEvents, getJson, localDate, overspeedText, updateMe } from '../api';
-
-const EVENT_KINDS = {
-  deviceOverspeed: { type: 'Скорость', tagClass: 'tag tag-outline', text: (e) => overspeedText(e) },
-  geofenceExit: { type: 'Геозона', tagClass: 'tag tag-accent-2', text: (e, zones) => `выезд из геозоны${zones?.[e.geofenceId] ? ` «${zones[e.geofenceId]}»` : ''}` },
-  geofenceEnter: { type: 'Геозона', tagClass: 'tag tag-accent-2', text: (e, zones) => `въезд в геозону${zones?.[e.geofenceId] ? ` «${zones[e.geofenceId]}»` : ''}` },
-  deviceFuelDrop: { type: 'Топливо', tagClass: 'tag tag-outline', text: () => 'резкое падение уровня топлива' },
-  deviceFuelIncrease: { type: 'Топливо', tagClass: 'tag tag-accent', text: () => 'заправка' },
-  deviceOffline: { type: 'Связь', tagClass: 'tag tag-neutral', text: () => 'потеря связи' },
-  deviceOnline: { type: 'Связь', tagClass: 'tag tag-accent', text: () => 'снова на связи' },
-  deviceMoving: { type: 'Движение', tagClass: 'tag tag-accent', text: () => 'начало движения' },
-  deviceStopped: { type: 'Движение', tagClass: 'tag tag-accent-2', text: () => 'остановка' },
-  ignitionOn: { type: 'Зажигание', tagClass: 'tag tag-accent', text: () => 'зажигание включено' },
-  ignitionOff: { type: 'Зажигание', tagClass: 'tag tag-accent-2', text: () => 'зажигание выключено' },
-  alarm: { type: 'Тревога', tagClass: 'tag tag-outline', text: (e) => `тревога: ${alarmName(e.attributes?.alarm)}` },
-  fuelLow: { type: 'Топливо', tagClass: 'tag tag-outline', text: (e) => e.message },
-  towing: { type: 'Эвакуатор', tagClass: 'tag tag-outline', text: (e) => e.message },
-};
+import {
+  DEFAULT_CRITICAL, EVENT_KINDS, formatTime, getAlerts, getEvents, getJson, localDate, updateMe,
+} from '../api';
 
 const KIND_OPTIONS = [...new Set(Object.values(EVENT_KINDS).map((k) => k.type))];
 
@@ -28,6 +13,7 @@ const KIND_LABELS = {
   deviceFuelDrop: 'Резкое падение топлива',
   deviceFuelIncrease: 'Заправка',
   deviceOffline: 'Потеря связи',
+  deviceUnknown: 'Нет данных от трекера',
   deviceOnline: 'Снова на связи',
   deviceMoving: 'Начало движения',
   deviceStopped: 'Остановка',
@@ -37,9 +23,6 @@ const KIND_LABELS = {
   fuelLow: 'Мало топлива',
   towing: 'Эвакуатор',
 };
-
-// критичные по умолчанию — пока клиент не настроил своё
-const DEFAULT_CRITICAL = new Set(['alarm', 'towing', 'fuelLow']);
 
 export default function Alerts({ allVehicles, focusOnMap, user, setUser }) {
   const [events, setEvents] = useState(null);
