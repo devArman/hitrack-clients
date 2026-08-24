@@ -1,6 +1,6 @@
 import { useEffect, useReducer } from 'react';
 import { api, formatTime, getJson } from './api';
-import { Blueprint, Icon } from './ui';
+import { Icon } from './ui';
 
 export const getAnnouncements = () => getJson('/announcements');
 export const markAnnouncementRead = (id) => api(`/announcements/${id}/read`, { method: 'POST' });
@@ -108,14 +108,21 @@ function AnnouncementItems() {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {announcements.map((a) => (
-        <Blueprint key={a.id} style={{ padding: 12, display: 'flex', flexDirection: 'column', gap: 4 }}>
+        <div
+          key={a.id}
+          style={{
+            padding: '12px 14px', display: 'flex', flexDirection: 'column', gap: 4,
+            border: '1px solid var(--color-divider)', borderRadius: 16,
+            background: a.read ? 'transparent' : 'var(--color-surface)',
+          }}
+        >
           <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
             <b style={{ fontSize: 14 }}>{a.subject}</b>
             {!a.read && <span className="tag tag-accent">новое</span>}
             <span className="text-muted" style={{ marginLeft: 'auto', fontSize: 12 }}>{formatTime(a.createdAt)}</span>
           </div>
           <div style={{ fontSize: 13, whiteSpace: 'pre-wrap' }}>{a.body}</div>
-        </Blueprint>
+        </div>
       ))}
     </div>
   );
@@ -141,7 +148,7 @@ export function AnnouncementsPanel({ onClose }) {
 /** Полноэкранный список объявлений (мобильный). */
 export function AnnouncementsScreen({ onClose }) {
   return (
-    <div style={{ position: 'absolute', inset: 0, zIndex: 1300, background: 'var(--color-bg)', display: 'flex', flexDirection: 'column', gap: 10, padding: 'calc(10px + env(safe-area-inset-top)) 12px 12px', overflow: 'auto' }}>
+    <div style={{ position: 'absolute', inset: 0, zIndex: 1300, background: 'var(--color-bg)', display: 'flex', flexDirection: 'column', gap: 10, padding: '4px 12px 12px', overflow: 'auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <button className="btn btn-ghost" onClick={onClose} style={{ padding: 6 }}><Icon name="arrow-left" size={18} /></button>
         <b style={{ fontSize: 17, fontFamily: 'var(--font-heading)', letterSpacing: '.02em' }}>Объявления</b>

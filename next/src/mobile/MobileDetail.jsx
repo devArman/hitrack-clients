@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
 import LeafletMap from '../LeafletMap';
-import { fuelLevel, fuelLiters, getDeviceSettings, getSummary, getTrips, saveDeviceSettings, sendCommand, startOfDay, KNOTS_TO_KMH } from '../api';
+import {
+  fuelLevel, fuelLiters, getDeviceSettings, getDeviceStats, getDeviceTimeline, getSummary,
+  hm, kmLabel, KNOTS_TO_KMH, saveDeviceSettings, sendCommand, startOfDay, telemetryFacts, timelineSummary,
+} from '../api';
 import { ConfirmDialog, Icon } from '../ui';
 
-export default function MobileDetail({ vehicle, devices, positions, onClose, onBuildTrack }) {
+export default function MobileDetail({ vehicle, positions, onClose, onBuildTrack }) {
   const [stats, setStats] = useState(null);
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -20,16 +23,24 @@ export default function MobileDetail({ vehicle, devices, positions, onClose, onB
 
   useEffect(() => {
     if (!vehicle) return;
+    const from = startOfDay();
+    const to = new Date();
     Promise.all([
-      getSummary([vehicle.device.id], startOfDay(), new Date()),
-      getTrips(vehicle.device.id, startOfDay(), new Date()),
-    ]).then(([summary, trips]) => {
+      getDeviceStats({ deviceId: vehicle.device.id, from, to }),
+      getDeviceTimeline(vehicle.device.id, from, to),
+      getSummary([vehicle.device.id], from, to),
+    ]).then(([statRows, timeline, summary]) => {
+      const stat = statRows[0] ?? {};
+      const day = timelineSummary(timeline);
       const row = summary[0] ?? {};
       setStats({
-        km: Math.round((row.distance ?? 0) / 1000),
+        km: kmLabel(stat.distanceMeters ?? 0),
+        maxSpeed: stat.maxSpeedKnots ? Math.round(stat.maxSpeedKnots * KNOTS_TO_KMH) : 0,
+        overspeed: stat.overspeedCount ?? 0,
+        driveMs: day?.driveMs ?? 0,
+        parkMs: day?.parkMs ?? 0,
+        trips: day?.trips ?? 0,
         hours: row.engineHours ? (row.engineHours / 3600000).toFixed(1) : null,
-        maxSpeed: row.maxSpeed ? Math.round(row.maxSpeed * KNOTS_TO_KMH) : 0,
-        trips: trips.length,
       });
     }).catch(() => setStats({}));
     // разово при открытии карточки
@@ -45,10 +56,15 @@ export default function MobileDetail({ vehicle, devices, positions, onClose, onB
 
   const cards = [
     { k: 'Пробег сегодня', v: stats ? `${stats.km ?? 0} км` : '…' },
-    { k: 'Моточасы', v: stats?.hours ? `${stats.hours} ч` : '—' },
     { k: 'Макс. скорость', v: stats ? `${stats.maxSpeed ?? 0} км/ч` : '…' },
+    { k: 'В движении', v: stats ? hm(stats.driveMs) : '…' },
+    { k: 'На стоянке', v: stats ? hm(stats.parkMs) : '…' },
+    { k: 'Превышения', v: stats ? `${stats.overspeed ?? 0}` : '…', warn: stats?.overspeed > 0 },
     { k: 'Поездок сегодня', v: stats ? `${stats.trips ?? 0}` : '…' },
+    ...(stats?.hours ? [{ k: 'Моточасы', v: `${stats.hours} ч`, wide: true }] : []),
   ];
+
+  const facts = telemetryFacts(vehicle.device, vehicle.position);
 
   const toggleEngine = async () => {
     setConfirming(false);
@@ -66,7 +82,7 @@ export default function MobileDetail({ vehicle, devices, positions, onClose, onB
   const one = { [vehicle.device.id]: vehicle.device };
 
   return (
-    <div style={{ position: 'absolute', inset: 0, zIndex: 1100, background: 'var(--color-bg)', display: 'flex', flexDirection: 'column', gap: 10, padding: 'calc(10px + env(safe-area-inset-top)) 12px 12px', overflow: 'auto' }}>
+    <div style={{ position: 'absolute', inset: 0, zIndex: 1100, background: 'var(--color-bg)', display: 'flex', flexDirection: 'column', gap: 10, padding: '4px 12px 12px', overflow: 'auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
         <button className="btn btn-ghost" onClick={onClose} style={{ padding: 6 }}><Icon name="arrow-left" size={18} /></button>
         <b style={{ fontSize: 17, fontFamily: 'var(--font-heading)', letterSpacing: '.02em' }}>{vehicle.name}</b>
@@ -82,10 +98,19 @@ export default function MobileDetail({ vehicle, devices, positions, onClose, onB
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         {cards.map((c) => (
-          <div key={c.k} style={{ border: '1px solid var(--color-divider)', borderRadius: 10, padding: 10 }}>
+          <div key={c.k} style={{ border: '1px solid var(--color-divider)', borderRadius: 10, padding: 10, ...(c.wide ? { gridColumn: '1 / -1' } : {}) }}>
             <div style={{ fontSize: 10, letterSpacing: '.1em', textTransform: 'uppercase', color: 'var(--color-accent)' }}>{c.k}</div>
-            <div style={{ fontFamily: 'var(--font-heading)', fontSize: 22 }}>{c.v}</div>
+            <div style={{ fontFamily: 'var(--font-heading)', fontSize: 22, ...(c.warn ? { color: '#c0392b' } : {}) }}>{c.v}</div>
           </div>
+        ))}
+      </div>
+      <div style={{ border: '1px solid var(--color-divider)', borderRadius: 10, padding: 12, display: 'flex', flexWrap: 'wrap', gap: '6px 14px', fontSize: 12.5 }}>
+        {facts.map(([icon, label, value]) => (
+          <span key={label} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, whiteSpace: 'nowrap' }}>
+            <Icon name={icon} size={12} style={{ opacity: 0.6 }} />
+            <span className="text-muted">{label}:</span>
+            <b style={{ fontWeight: 600 }}>{value}</b>
+          </span>
         ))}
       </div>
       {fuel != null && (

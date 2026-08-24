@@ -1,120 +1,190 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import LeafletMap from '../LeafletMap';
-import { fuelLevel, fuelLiters, getRoute, getSummary, startOfDay } from '../api';
+import { getRoute, startOfDay } from '../api';
 import { Icon } from '../ui';
-import { AnnouncementsBell } from '../Announcements';
+import MobileDayPanel from './MobileDayPanel';
+import VehicleList from './VehicleList';
 
-export default function MobileMap({ user, vehicles, devices, positions, openDetail, trackFor, clearTrack, openAnnouncements }) {
+const SPLIT_KEY = 'mobileMapSplit'; // доля карты по высоте, %
+// точки прилипания: список на весь экран, поровну, карта во весь экран
+const SNAPS = [0, 50, 82];
+const nearestSnap = (value) => SNAPS.reduce((a, b) => (Math.abs(b - value) < Math.abs(a - value) ? b : a));
+
+export default function MobileMap({ vehicles, devices, positions, stats, trackFor, clearTrack }) {
   const [selected, setSelected] = useState(null);
-  const [search, setSearch] = useState('');
+  const [visibleIds, setVisibleIds] = useState(null);
   const [focus, setFocus] = useState({ id: null, seq: 0 });
   const [track, setTrack] = useState(null);
-  const [kmToday, setKmToday] = useState({});
+  const [routeKey, setRouteKey] = useState(null); // что нарисовано: 'day' | 'trip:N'
+  const [split, setSplit] = useState(() => Number(localStorage.getItem(SPLIT_KEY)) || 50);
+  const [me, setMe] = useState(null); // моё местоположение
+  const [meSeq, setMeSeq] = useState(0); // счётчик нажатий — по нему карта подлетает
+  const [locating, setLocating] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const wrapRef = useRef(null);
+  const movedRef = useRef(false); // отличаем тап по ручке от свайпа
 
-  useEffect(() => {
-    const ids = vehicles.map((v) => v.device.id);
-    if (!ids.length) return;
-    getSummary(ids, startOfDay(), new Date())
-      .then((rows) => setKmToday(Object.fromEntries(rows.map((r) => [r.deviceId, Math.round((r.distance ?? 0) / 1000)]))))
-      .catch(() => {});
-    // пробег за сегодня; повтор, когда приехал список машин
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [vehicles.length > 0]);
+  useEffect(() => { localStorage.setItem(SPLIT_KEY, String(Math.round(split))); }, [split]);
+
+  const drawRoute = async (key, from, to, deviceId) => {
+    setRouteKey(key);
+    try {
+      const route = await getRoute(deviceId, from, to);
+      setTrack(route.length > 1 ? route : null);
+    } catch { setTrack(null); }
+  };
+
+  // повторное нажатие на ту же кнопку/поездку снимает маршрут с карты
+  const showRoute = (key, from, to) => {
+    if (routeKey === key) { setTrack(null); setRouteKey(null); return; }
+    drawRoute(key, from, to, selected);
+  };
 
   // «построить трек» из карточки объекта
   useEffect(() => {
     if (trackFor == null) return;
     setSelected(trackFor);
-    getRoute(trackFor, startOfDay(), new Date())
-      .then((route) => setTrack(route.length > 1 ? route : null))
-      .catch(() => setTrack(null));
+    drawRoute('day', startOfDay(), new Date(), trackFor);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackFor]);
 
   const pick = (id) => {
+    if (id !== selected) {
+      setTrack(null);
+      setRouteKey(null);
+      clearTrack();
+    }
     setSelected(id);
-    setTrack(null);
-    clearTrack();
-    setSearch('');
     setFocus((f) => ({ id, seq: f.seq + 1 }));
   };
 
-  const matches = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return [];
-    return vehicles.filter((v) => v.name.toLowerCase().includes(q) || String(v.plate).toLowerCase().includes(q)).slice(0, 6);
-  }, [search, vehicles]);
-
-  const vehicle = vehicles.find((v) => v.device.id === selected);
-  const fuel = vehicle ? fuelLevel(vehicle.position) : null;
-  const initials = (user.name || user.email).split(/[\s@]+/).slice(0, 2).map((s) => s[0]?.toUpperCase()).join('');
-
-  const dayTrack = async () => {
-    if (!vehicle) return;
-    if (track) { setTrack(null); return; }
-    try {
-      const route = await getRoute(vehicle.device.id, startOfDay(), new Date());
-      setTrack(route.length > 1 ? route : null);
-    } catch { setTrack(null); }
+  const closePanel = () => {
+    setSelected(null);
+    setTrack(null);
+    setRouteKey(null);
+    clearTrack();
   };
 
+  // пока открыта лента дня — на карте только выбранная машина,
+  // иначе маркеры повторяют фильтр списка
+  const [mapDevices, mapPositions] = useMemo(() => {
+    if (selected == null && !visibleIds) return [devices, positions];
+    const ids = new Set(selected != null ? [selected] : visibleIds);
+    return [
+      Object.fromEntries(Object.entries(devices).filter(([id]) => ids.has(Number(id)))),
+      Object.fromEntries(Object.entries(positions).filter(([id]) => ids.has(Number(id)))),
+    ];
+  }, [visibleIds, devices, positions, selected]);
+
+  const vehicle = selected != null ? vehicles.find((v) => v.device.id === selected) : null;
+
+  const locate = () => {
+    if (!navigator.geolocation) return;
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setMe({ latitude: pos.coords.latitude, longitude: pos.coords.longitude, accuracy: pos.coords.accuracy });
+        setMeSeq((n) => n + 1);
+        setLocating(false);
+      },
+      () => setLocating(false),
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 30000 },
+    );
+  };
+
+  // свайп по ручке тянет нижний блок вверх/вниз, на отпускании — прилипание
+  const startDrag = (e) => {
+    e.preventDefault();
+    const rect = wrapRef.current.getBoundingClientRect();
+    setDragging(true);
+    movedRef.current = false;
+    const start = e.clientY;
+    const move = (ev) => {
+      if (Math.abs(ev.clientY - start) > 4) movedRef.current = true;
+      setSplit(Math.min(SNAPS[SNAPS.length - 1], Math.max(0, ((ev.clientY - rect.top) / rect.height) * 100)));
+    };
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+      setDragging(false);
+      setSplit(nearestSnap);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  // тап по ручке — переключение между «поровну» и «список во весь экран»
+  const toggleSheet = () => {
+    if (movedRef.current) return; // это был свайп, а не тап
+    setSplit((v) => (v > 4 ? 0 : 50));
+  };
+  const collapsed = split < 4;
+
+  const round = { width: 40, height: 40, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: '50%', boxShadow: 'var(--shadow-sm)' };
+
   return (
-    <div style={{ position: 'relative', flex: 1, display: 'flex', minHeight: 0 }}>
-      <LeafletMap devices={devices} positions={positions} track={track} focusId={focus.id} focusSeq={focus.seq} onMarkerClick={pick} />
-      <div style={{ position: 'absolute', top: 'calc(10px + env(safe-area-inset-top))', left: 12, right: 12, display: 'flex', gap: 8, zIndex: 1000 }}>
-        <div style={{ flex: 1, position: 'relative' }}>
-          <input
-            className="input"
-            placeholder="Поиск объекта…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            style={{ background: 'color-mix(in srgb, var(--color-bg) 92%, transparent)', minHeight: 42 }}
-          />
-          {matches.length > 0 && (
-            <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: 'var(--color-bg)', border: '1px solid var(--color-divider)', borderTop: 0, borderRadius: '0 0 10px 10px', overflow: 'hidden' }}>
-              {matches.map((v) => (
-                <div key={v.device.id} onClick={() => pick(v.device.id)} style={{ padding: '10px 12px', display: 'flex', gap: 8, alignItems: 'center', fontSize: 14, borderTop: '1px solid var(--color-divider)' }}>
-                  <span style={{ width: 8, height: 8, borderRadius: '50%', background: v.dotColor }} />
-                  <b>{v.name}</b>
-                  <span className="text-muted" style={{ marginLeft: 'auto', fontSize: 12 }}>{v.plate}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-        <span style={{ width: 42, height: 42, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 10, background: 'color-mix(in srgb, var(--color-bg) 92%, transparent)', border: '1px solid var(--color-divider)' }}>
-          <AnnouncementsBell onClick={openAnnouncements} size={18} />
-        </span>
-        <span style={{ width: 42, height: 42, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: 10, background: 'var(--grad-brand)', color: '#fff', fontFamily: 'var(--font-heading)' }}>
-          {initials}
-        </span>
-      </div>
-      {vehicle && (
+    <div ref={wrapRef} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+      {/* верхняя половина — карта отдельной карточкой, как списки ниже */}
+      <div style={{
+        height: `${split}%`, flex: 'none', display: collapsed ? 'none' : 'flex', minHeight: 0, padding: '4px 12px 0',
+        transition: dragging ? 'none' : 'height .2s ease',
+      }}>
         <div style={{
-          position: 'absolute', left: 12, right: 12, bottom: 14, zIndex: 1000,
-          background: 'color-mix(in srgb, var(--color-bg) 96%, transparent)',
-          border: '1px solid var(--color-divider)', borderRadius: 12, padding: 12,
-          display: 'flex', flexDirection: 'column', gap: 8, boxShadow: 'var(--shadow-lg)',
+          flex: 1, position: 'relative', display: 'flex', minHeight: 0, minWidth: 0,
+          borderRadius: 18, overflow: 'hidden',
+          border: '1px solid var(--color-divider)', boxShadow: 'var(--shadow-sm)',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }} onClick={() => openDetail(vehicle.device.id)}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: vehicle.dotColor }} />
-            <b style={{ fontSize: 15 }}>{vehicle.name}</b>
-            <span className="text-muted" style={{ marginLeft: 'auto', fontSize: 12 }}>{vehicle.plate}</span>
-          </div>
-          <div className="text-muted" style={{ display: 'flex', gap: 14, fontSize: 12 }}>
-            <span>{vehicle.stLine}</span>
-            {fuel != null && <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}><Icon name="fuel" size={12} />{fuel}%{fuelLiters(vehicle.position) != null && ` · ${fuelLiters(vehicle.position)} л`}</span>}
-            {kmToday[vehicle.device.id] != null && <span>{kmToday[vehicle.device.id]} км сегодня</span>}
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            <button className={track ? 'btn btn-secondary' : 'btn btn-primary'} style={{ flex: 1, letterSpacing: '.04em' }} onClick={dayTrack}>
-              {track ? 'СКРЫТЬ ТРЕК' : 'ТРЕК ЗА ДЕНЬ'}
-            </button>
-            <button className="btn btn-secondary" style={{ flex: 1, letterSpacing: '.04em' }} onClick={() => openDetail(vehicle.device.id)}>
-              КАРТОЧКА
-            </button>
-          </div>
+          <LeafletMap
+            devices={mapDevices}
+            positions={mapPositions}
+            track={track}
+            focusId={focus.id}
+            focusSeq={focus.seq}
+            onMarkerClick={pick}
+            me={me}
+            meSeq={meSeq}
+          />
+          <button
+            onClick={locate}
+            title="Показать моё местоположение"
+            style={{
+              ...round, position: 'absolute', right: 10, bottom: 26, zIndex: 1000, border: '1px solid var(--color-divider)',
+              background: 'color-mix(in srgb, var(--color-bg) 92%, transparent)',
+              color: me ? 'var(--color-accent)' : 'var(--color-text)',
+              opacity: locating ? 0.6 : 1, cursor: 'pointer', padding: 0,
+            }}
+          >
+            <Icon name="locate-fixed" size={19} />
+          </button>
         </div>
-      )}
+      </div>
+
+      {/* граница — тянется пальцем */}
+      <div
+        onPointerDown={startDrag}
+        onClick={toggleSheet}
+        title={collapsed ? 'Показать карту' : 'Развернуть список'}
+        style={{
+          flex: 'none', height: 24, display: 'grid', placeItems: 'center',
+          cursor: 'row-resize', touchAction: 'none', background: 'var(--color-bg)',
+        }}
+      >
+        <span style={{ width: 44, height: 5, borderRadius: 999, background: 'color-mix(in srgb, var(--color-text) 30%, transparent)' }} />
+      </div>
+
+      {/* нижняя половина — список устройств или лента дня выбранного */}
+      <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', background: 'var(--color-bg)' }}>
+        {vehicle ? (
+          <MobileDayPanel
+            vehicle={vehicle}
+            onClose={closePanel}
+            routeKey={routeKey}
+            showRoute={showRoute}
+          />
+        ) : (
+          <VehicleList vehicles={vehicles} stats={stats} selectedId={selected} onPick={pick} onVisible={setVisibleIds} />
+        )}
+      </div>
     </div>
   );
 }

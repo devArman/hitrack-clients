@@ -255,6 +255,16 @@ img { display: block; max-width: 100%; }
 .veh-card:hover { border-color: color-mix(in srgb, var(--color-accent) 55%, transparent); box-shadow: var(--shadow-md); }
 .veh-card-active { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent) inset; }
 
+/* элементы Leaflet под общий скруглённый стиль */
+.leaflet-container { border-radius: inherit; }
+.leaflet-control-zoom {
+  border: 1px solid var(--color-divider) !important;
+  border-radius: 12px !important; overflow: hidden;
+  box-shadow: var(--shadow-sm) !important;
+}
+.leaflet-control-zoom a { border-radius: 0 !important; border-bottom-color: var(--color-divider) !important; }
+.leaflet-control-attribution { border-radius: 8px 0 0 0; }
+
 /* карта в тёмной теме — приглушаем светлые тайлы OSM */
 [data-theme="dark"] .leaflet-layer,
 [data-theme="dark"] .leaflet-control-zoom,

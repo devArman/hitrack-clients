@@ -36,7 +36,7 @@ function markerIcon(color, category, course, moving) {
  * devices/positions — карты по id; track — массив позиций; geofences — массив Traccar-геозон.
  * focusId — id устройства, к которому надо подлететь (меняется извне).
  */
-export default function LeafletMap({ devices, positions, track, geofences, focusId, focusSeq, onMarkerClick, playMarker, onMapClick, drawPoints }) {
+export default function LeafletMap({ devices, positions, track, geofences, focusId, focusSeq, onMarkerClick, playMarker, onMapClick, drawPoints, me, meSeq }) {
   const clickRef = useRef(onMarkerClick);
   clickRef.current = onMarkerClick;
   const mapClickRef = useRef(onMapClick);
@@ -47,6 +47,7 @@ export default function LeafletMap({ devices, positions, track, geofences, focus
   const markersRef = useRef(new Map());
   const layersRef = useRef([]);
   const playRef = useRef(null);
+  const meRef = useRef(null);
   const fittedRef = useRef(false);
 
   useEffect(() => {
@@ -181,6 +182,37 @@ export default function LeafletMap({ devices, positions, track, geofences, focus
       playRef.current.setIcon(icon);
     }
   }, [playMarker]);
+
+  // моё местоположение: синяя точка с кругом точности
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    meRef.current?.remove();
+    meRef.current = null;
+    if (!me) return;
+    const dot = L.divIcon({
+      className: '',
+      iconSize: [18, 18],
+      iconAnchor: [9, 9],
+      html: `<div style="width:18px;height:18px;border-radius:50%;background:#1a73e8;
+        border:3px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.45)"></div>`,
+    });
+    const group = L.layerGroup([
+      L.circle([me.latitude, me.longitude], {
+        radius: Math.max(me.accuracy ?? 0, 15),
+        color: '#1a73e8', weight: 1, fillColor: '#1a73e8', fillOpacity: 0.12, interactive: false,
+      }),
+      L.marker([me.latitude, me.longitude], { icon: dot, zIndexOffset: 1200 }).bindTooltip('Вы здесь'),
+    ]).addTo(map);
+    meRef.current = group;
+  }, [me]);
+
+  // «показать меня» — подлетаем к своей точке по кнопке
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map && me && meSeq) map.flyTo([me.latitude, me.longitude], 15, { duration: 0.8 });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meSeq]);
 
   // фокус на устройстве
   useEffect(() => {

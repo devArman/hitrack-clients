@@ -24,7 +24,7 @@ export default function MobileProfile({ user, setUser, vehicles, theme, setTheme
   };
 
   return (
-    <div style={{ flex: 1, overflow: 'auto', padding: 'calc(14px + env(safe-area-inset-top)) 14px 14px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+    <div style={{ flex: 1, overflow: 'auto', padding: '6px 14px 14px', display: 'flex', flexDirection: 'column', gap: 14 }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <span style={{ width: 46, height: 46, display: 'grid', placeItems: 'center', borderRadius: 12, background: 'var(--grad-brand)', color: '#fff', fontFamily: 'var(--font-heading)', fontSize: 19 }}>
           {(user.name || user.email).split(/[\s@]+/).slice(0, 2).map((s) => s[0]?.toUpperCase()).join('')}
