@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import LeafletMap from '../LeafletMap';
 import { getRoute, startOfDay } from '../api';
 import { Icon } from '../ui';
+import { AnnouncementsBell } from '../Announcements';
 import MobileDayPanel from './MobileDayPanel';
 import VehicleList from './VehicleList';
 
@@ -10,7 +11,7 @@ const SPLIT_KEY = 'mobileMapSplit'; // доля карты по высоте, %
 const SNAPS = [0, 50, 82];
 const nearestSnap = (value) => SNAPS.reduce((a, b) => (Math.abs(b - value) < Math.abs(a - value) ? b : a));
 
-export default function MobileMap({ vehicles, devices, positions, stats, trackFor, clearTrack }) {
+export default function MobileMap({ vehicles, devices, positions, stats, trackFor, clearTrack, openAnnouncements, openProfile, initials, onMapCovers }) {
   const [selected, setSelected] = useState(null);
   const [visibleIds, setVisibleIds] = useState(null);
   const [focus, setFocus] = useState({ id: null, seq: 0 });
@@ -119,20 +120,28 @@ export default function MobileMap({ vehicles, devices, positions, stats, trackFo
     setSplit((v) => (v > 4 ? 0 : 50));
   };
   const collapsed = split < 4;
+  useEffect(() => { onMapCovers?.(!collapsed); }, [collapsed, onMapCovers]);
 
   const round = { width: 40, height: 40, flex: 'none', display: 'grid', placeItems: 'center', borderRadius: '50%', boxShadow: 'var(--shadow-sm)' };
+  // кнопки поверх карты: полупрозрачное стекло, чтобы карта читалась под ними
+  const glass = {
+    ...round, width: 38, height: 38, cursor: 'pointer', padding: 0,
+    border: '1px solid color-mix(in srgb, var(--color-divider) 70%, transparent)',
+    background: 'color-mix(in srgb, var(--color-bg) 78%, transparent)',
+    backdropFilter: 'blur(10px)', WebkitBackdropFilter: 'blur(10px)',
+    color: 'var(--color-text)', overflow: 'hidden',
+  };
 
   return (
     <div ref={wrapRef} style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
       {/* верхняя половина — карта отдельной карточкой, как списки ниже */}
       <div style={{
-        height: `${split}%`, flex: 'none', display: collapsed ? 'none' : 'flex', minHeight: 0, padding: '4px 12px 0',
+        height: `${split}%`, flex: 'none', display: collapsed ? 'none' : 'flex', minHeight: 0, padding: 0,
         transition: dragging ? 'none' : 'height .2s ease',
       }}>
         <div style={{
           flex: 1, position: 'relative', display: 'flex', minHeight: 0, minWidth: 0,
-          borderRadius: 18, overflow: 'hidden',
-          border: '1px solid var(--color-divider)', boxShadow: 'var(--shadow-sm)',
+          borderRadius: 0, overflow: 'hidden',
         }}>
           <LeafletMap
             devices={mapDevices}
@@ -144,14 +153,28 @@ export default function MobileMap({ vehicles, devices, positions, stats, trackFo
             me={me}
             meSeq={meSeq}
           />
+          <div style={{
+            position: 'absolute', zIndex: 1000, display: 'flex', gap: 8,
+            top: 'calc(10px + env(safe-area-inset-top))', right: 10,
+          }}>
+            <span style={glass}>
+              <AnnouncementsBell onClick={openAnnouncements} size={17} />
+            </span>
+            <span
+              onClick={openProfile}
+              title="Профиль"
+              style={{ ...glass, background: 'var(--grad-brand)', color: '#fff', fontFamily: 'var(--font-heading)', fontSize: 13, opacity: .92 }}
+            >
+              {initials}
+            </span>
+          </div>
           <button
             onClick={locate}
             title="Показать моё местоположение"
             style={{
-              ...round, position: 'absolute', right: 10, bottom: 26, zIndex: 1000, border: '1px solid var(--color-divider)',
-              background: 'color-mix(in srgb, var(--color-bg) 92%, transparent)',
+              ...glass, width: 40, height: 40, position: 'absolute', right: 10, bottom: 26, zIndex: 1000,
               color: me ? 'var(--color-accent)' : 'var(--color-text)',
-              opacity: locating ? 0.6 : 1, cursor: 'pointer', padding: 0,
+              opacity: locating ? 0.6 : 1,
             }}
           >
             <Icon name="locate-fixed" size={19} />
@@ -166,10 +189,18 @@ export default function MobileMap({ vehicles, devices, positions, stats, trackFo
         title={collapsed ? 'Показать карту' : 'Развернуть список'}
         style={{
           flex: 'none', height: 24, display: 'grid', placeItems: 'center',
-          cursor: 'row-resize', touchAction: 'none', background: 'var(--color-bg)',
+          cursor: 'row-resize', touchAction: 'none', position: 'relative', zIndex: 1100,
+          marginTop: collapsed ? 0 : -24,
+          background: collapsed ? 'var(--color-bg)' : 'transparent',
         }}
       >
-        <span style={{ width: 44, height: 5, borderRadius: 999, background: 'color-mix(in srgb, var(--color-text) 30%, transparent)' }} />
+        {/* над картой ручка лежит на белой полосе атрибуции — поэтому тёмная,
+            со светлым ореолом, чтобы читалась и на тёмных участках карты */}
+        <span style={{
+          width: 44, height: 5, borderRadius: 999,
+          background: 'color-mix(in srgb, var(--color-text) 38%, transparent)',
+          boxShadow: collapsed ? 'none' : '0 0 0 3px color-mix(in srgb, var(--color-bg) 65%, transparent)',
+        }} />
       </div>
 
       {/* нижняя половина — список устройств или лента дня выбранного */}

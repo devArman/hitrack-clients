@@ -7,6 +7,8 @@ import { Icon } from '../ui';
 
 const tripTime = (value) => new Date(value).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
 
+const FACTS_KEY = 'mobileDayFacts'; // показывать ли блок показателей — выбор запоминается
+
 /**
  * Лента выбранного дня для одной машины — мобильный вариант нижней панели
  * десктопной карты: выбор дня, телеметрия и чередование поездок и стоянок.
@@ -16,7 +18,12 @@ export default function MobileDayPanel({ vehicle, onClose, routeKey, showRoute }
   const [day, setDay] = useState(() => localDate());
   const [timeline, setTimeline] = useState({ rows: [], loading: true });
   const [stat, setStat] = useState(null);
+  // показатели дня и телеметрия по умолчанию свёрнуты: на телефоне это десяток строк,
+  // из-за которых на ленту поездок почти не остаётся места
+  const [showFacts, setShowFacts] = useState(() => localStorage.getItem(FACTS_KEY) === '1');
   const daysRef = useRef(null);
+
+  useEffect(() => { localStorage.setItem(FACTS_KEY, showFacts ? '1' : '0'); }, [showFacts]);
 
   const deviceId = vehicle.device.id;
   const range = useMemo(() => ({
@@ -92,6 +99,7 @@ export default function MobileDayPanel({ vehicle, onClose, routeKey, showRoute }
           </div>
         </div>
 
+        {showFacts && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px 14px', flexWrap: 'wrap', fontSize: 12 }}>
           {summary && (
             <>
@@ -132,6 +140,19 @@ export default function MobileDayPanel({ vehicle, onClose, routeKey, showRoute }
             </span>
           ))}
         </div>
+        )}
+
+        <button
+          className="btn btn-ghost"
+          onClick={() => setShowFacts((v) => !v)}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            padding: '2px 8px', fontSize: 11.5, color: 'var(--color-text)', opacity: 0.7,
+          }}
+        >
+          <Icon name={showFacts ? 'chevron-up' : 'chevron-down'} size={14} />
+          {showFacts ? 'Скрыть показатели' : 'Показатели и телеметрия'}
+        </button>
 
       </div>
 

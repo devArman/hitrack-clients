@@ -78,6 +78,9 @@ export default function MobileShell({ user, setUser, devices, positions }) {
   }, []);
 
   const [showAnnouncements, setShowAnnouncements] = useState(false);
+  // на вкладке карты шапка прячется, а её кнопки уезжают поверх карты —
+  // экран маленький, заголовок «Карта» и так дублирует подсвеченную вкладку внизу
+  const [mapCovers, setMapCovers] = useState(true);
 
   // «АШ» — первые буквы имени и фамилии (или e-mail, если имени нет)
   const initials = (user.name || user.email)
@@ -87,18 +90,24 @@ export default function MobileShell({ user, setUser, devices, positions }) {
   const openDetail = (id) => { setDetailId(id); };
   const buildTrack = (id) => { setTrackFor(id); setDetailId(null); setTab('map'); };
 
-  const common = { user, setUser, vehicles, devices, positions, stats, openDetail, theme, setTheme, openAnnouncements: () => setShowAnnouncements(true) };
+  const openProfile = () => { setTab('profile'); setDetailId(null); };
+  const common = {
+    user, setUser, vehicles, devices, positions, stats, openDetail, theme, setTheme,
+    openAnnouncements: () => setShowAnnouncements(true), openProfile, initials,
+  };
+  const headerHidden = tab === 'map' && mapCovers;
 
   return (
     <div data-theme={theme} style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: 'var(--color-bg)', color: 'var(--color-text)', fontFamily: 'var(--font-body)', overflow: 'hidden' }}>
       <AnnouncementsModal />
-      {/* общая шапка: раздел, объявления и аватар — видны во всех вкладках */}
-      <div style={{
+      {/* общая шапка: раздел, объявления и аватар. На карте её нет — кнопки лежат поверх карты */}
+      {!headerHidden && <div style={{
         flex: 'none', display: 'flex', alignItems: 'center', gap: 8,
         padding: 'calc(8px + env(safe-area-inset-top)) 12px 4px',
       }}>
+        {/* на карте заголовок не нужен: вкладка и так подсвечена внизу, а место дорого */}
         <b style={{ fontFamily: 'var(--font-heading)', fontSize: 19, letterSpacing: '.02em' }}>
-          {TABS.find(([id]) => id === tab)?.[1]}
+          {tab === 'map' ? '' : TABS.find(([id]) => id === tab)?.[1]}
         </b>
         <span style={{
           ...AVATAR, marginLeft: 'auto',
@@ -114,9 +123,9 @@ export default function MobileShell({ user, setUser, devices, positions }) {
         >
           {initials}
         </span>
-      </div>
+      </div>}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
-        {tab === 'map' && <MobileMap {...common} trackFor={trackFor} clearTrack={() => setTrackFor(null)} />}
+        {tab === 'map' && <MobileMap {...common} trackFor={trackFor} clearTrack={() => setTrackFor(null)} onMapCovers={setMapCovers} />}
         {tab === 'objects' && <MobileObjects {...common} />}
         {tab === 'events' && <MobileEvents {...common} />}
         {tab === 'profile' && <MobileProfile {...common} />}

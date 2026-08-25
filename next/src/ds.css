@@ -263,7 +263,14 @@ img { display: block; max-width: 100%; }
   box-shadow: var(--shadow-sm) !important;
 }
 .leaflet-control-zoom a { border-radius: 0 !important; border-bottom-color: var(--color-divider) !important; }
-.leaflet-control-attribution { border-radius: 8px 0 0 0; }
+.leaflet-control-attribution {
+  /* обязательное указание источника тайлов, но максимально ненавязчиво */
+  border-radius: 0 8px 0 0;
+  font-size: 9px;
+  padding: 0 4px;
+  background: color-mix(in srgb, var(--color-bg) 55%, transparent);
+  opacity: .55;
+}
 
 /* карта в тёмной теме — приглушаем светлые тайлы OSM */
 [data-theme="dark"] .leaflet-layer,

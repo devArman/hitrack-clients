@@ -51,11 +51,15 @@ export default function LeafletMap({ devices, positions, track, geofences, focus
   const fittedRef = useRef(false);
 
   useEffect(() => {
-    const map = L.map(containerRef.current, { zoomControl: true }).setView(YEREVAN, 12);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap contributors',
-    }).addTo(map);
+    // attributionControl.prefix=false убирает «Leaflet» с флагом — это реклама самой
+    // библиотеки, её показывать не обязано. Ссылка на OpenStreetMap остаётся:
+    // тайлы под лицензией ODbL, указание источника — её требование.
+    const map = L.map(containerRef.current, { zoomControl: true, attributionControl: false })
+      .setView(YEREVAN, 12);
+    L.control.attribution({ prefix: false, position: 'bottomleft' })
+      .addAttribution('© OpenStreetMap')
+      .addTo(map);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19 }).addTo(map);
     map.on('click', (e) => mapClickRef.current?.({ latitude: e.latlng.lat, longitude: e.latlng.lng }));
     mapRef.current = map;
     // контейнер растягивается флексом после монтирования — без этого Leaflet
