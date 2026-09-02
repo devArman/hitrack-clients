@@ -36,7 +36,7 @@ function markerIcon(color, category, course, moving) {
  * devices/positions — карты по id; track — массив позиций; geofences — массив Traccar-геозон.
  * focusId — id устройства, к которому надо подлететь (меняется извне).
  */
-export default function LeafletMap({ devices, positions, track, geofences, focusId, focusSeq, onMarkerClick, playMarker, onMapClick, drawPoints, me, meSeq }) {
+export default function LeafletMap({ devices, positions, track: rawTrack, geofences, focusId, focusSeq, onMarkerClick, playMarker, onMapClick, drawPoints, me, meSeq }) {
   const clickRef = useRef(onMarkerClick);
   clickRef.current = onMarkerClick;
   const mapClickRef = useRef(onMapClick);
@@ -112,6 +112,10 @@ export default function LeafletMap({ devices, positions, track, geofences, focus
     layersRef.current.forEach((layer) => layer.remove());
     layersRef.current = [];
 
+    // страховка от битых точек (0/0 или вне диапазона) — иначе линия улетает через полмира
+    const track = rawTrack?.filter((p) => Number.isFinite(p.latitude) && Number.isFinite(p.longitude)
+      && Math.abs(p.latitude) <= 90 && Math.abs(p.longitude) <= 180
+      && !(p.latitude === 0 && p.longitude === 0));
     if (track && track.length > 1) {
       const line = L.polyline(track.map((p) => [p.latitude, p.longitude]), {
         color: '#0C7FC3', weight: 4, opacity: 0.85,
@@ -150,7 +154,7 @@ export default function LeafletMap({ devices, positions, track, geofences, focus
       const group = L.featureGroup(layersRef.current);
       if (group.getLayers().length) map.fitBounds(group.getBounds().pad(0.2));
     }
-  }, [track, geofences]);
+  }, [rawTrack, geofences]);
 
   // рисование новой геозоны: пунктирный контур по кликам
   useEffect(() => {
