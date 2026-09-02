@@ -5,6 +5,7 @@
   --color-text: #1d1f20;
   --color-accent: #019178;
   --color-accent-2: #0C7FC3;
+  --color-danger: #c0392b;
   --grad-brand: linear-gradient(135deg, #01A586, #0C7FC3);
   --color-divider: color-mix(in srgb, #1d1f20 16%, transparent);
 
@@ -86,6 +87,7 @@
   --color-accent-900: #d9f7ef;
 
   --color-accent-2: #3aa4e4;
+  --color-danger: #e5584a;
   --color-accent-2-100: #0a2b42;
   --color-accent-2-200: #0c3d5e;
   --color-accent-2-300: #0d557f;
@@ -145,6 +147,9 @@ img { display: block; max-width: 100%; }
 .btn-ghost { color: var(--color-accent); padding-inline: var(--space-1); border-color: transparent; }
 .btn-ghost:hover { background: color-mix(in srgb, var(--color-accent) 10%, transparent); }
 .btn-ghost:active { background: color-mix(in srgb, var(--color-accent) 18%, transparent); }
+.btn-danger { color: var(--color-danger); border-color: color-mix(in srgb, var(--color-danger) 45%, transparent); }
+.btn-danger:hover { background: color-mix(in srgb, var(--color-danger) 10%, transparent); }
+.btn-danger:active { background: color-mix(in srgb, var(--color-danger) 18%, transparent); }
 .btn-block { width: 100%; margin-top: var(--space-2); }
 
 /* — forms — */
@@ -158,6 +163,7 @@ img { display: block; max-width: 100%; }
   background: var(--color-surface);
   border: 1px solid var(--color-divider); border-radius: var(--radius-md);
 }
+.input:disabled { opacity: 0.6; cursor: not-allowed; }
 .input:hover { border-color: color-mix(in srgb, var(--color-text) 45%, transparent); }
 .input:focus-visible { border-color: var(--color-accent); outline-offset: 0; }
 .radio { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; }
@@ -254,6 +260,22 @@ img { display: block; max-width: 100%; }
 }
 .veh-card:hover { border-color: color-mix(in srgb, var(--color-accent) 55%, transparent); box-shadow: var(--shadow-md); }
 .veh-card-active { border-color: var(--color-accent); box-shadow: 0 0 0 1px var(--color-accent) inset; }
+
+/* — карточка-группа настроек (мобильный профиль) — */
+.card {
+  display: flex; flex-direction: column; gap: var(--space-3);
+  padding: var(--space-4); border-radius: 16px;
+  background: var(--color-surface); border: 1px solid var(--color-divider);
+}
+.card-title {
+  font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: color-mix(in srgb, var(--color-text) 55%, transparent);
+}
+.card-divider { height: 1px; background: var(--color-divider); }
+/* .input по умолчанию тоже --color-surface и внутри карточки сливался бы с ней:
+   уводим поля на соседний слой — в светлой теме они светлее, в тёмной темнее */
+.card .input { background: var(--color-bg); }
+.field-error { font-size: 12px; color: var(--color-danger); margin-top: 4px; }
 
 /* элементы Leaflet под общий скруглённый стиль */
 .leaflet-container { border-radius: inherit; }

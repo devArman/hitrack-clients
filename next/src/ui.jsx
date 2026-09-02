@@ -39,7 +39,7 @@ export function ConfirmDialog({ title, body, confirmLabel, danger, onConfirm, on
           <button className="btn btn-secondary" onClick={onCancel}>Отмена</button>
           <button
             className="btn btn-primary"
-            style={danger ? { background: '#c0392b', borderColor: '#c0392b' } : undefined}
+            style={danger ? { background: 'var(--color-danger)', borderColor: 'var(--color-danger)' } : undefined}
             onClick={onConfirm}
           >
             {confirmLabel}

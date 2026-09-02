@@ -116,13 +116,16 @@ export default function MobileShell({ user, setUser, devices, positions }) {
         }}>
           <AnnouncementsBell onClick={() => setShowAnnouncements(true)} size={17} />
         </span>
-        <span
-          onClick={() => { setTab('profile'); setDetailId(null); }}
-          title={user.name || user.email}
-          style={{ ...AVATAR, background: 'var(--grad-brand)', color: '#fff', fontFamily: 'var(--font-heading)', fontSize: 13 }}
-        >
-          {initials}
-        </span>
+        {/* на самой вкладке профиля аватар в шапке дублировал бы аватар экрана */}
+        {tab !== 'profile' && (
+          <span
+            onClick={() => { setTab('profile'); setDetailId(null); }}
+            title={user.name || user.email}
+            style={{ ...AVATAR, background: 'var(--grad-brand)', color: '#fff', fontFamily: 'var(--font-heading)', fontSize: 13 }}
+          >
+            {initials}
+          </span>
+        )}
       </div>}
       <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', position: 'relative' }}>
         {tab === 'map' && <MobileMap {...common} trackFor={trackFor} clearTrack={() => setTrackFor(null)} onMapCovers={setMapCovers} />}
