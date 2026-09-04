@@ -41,15 +41,30 @@ export default function MobileDayPanel({ vehicle, onClose, routeKey, showRoute }
 
   useEffect(() => {
     let alive = true;
+    let retryTimer = null;
+    // адреса стоянок бэкенд геокодит фоном — тихо перезапрашиваем, пока не доедут
+    const refetchAddresses = (rows, attempt) => {
+      const missing = rows.filter((s) => s.type === 'park' && !s.address).length;
+      if (!missing || attempt >= 4) return;
+      retryTimer = setTimeout(() => {
+        getDeviceTimeline(deviceId, range.from, range.to)
+          .then((fresh) => {
+            if (!alive) return;
+            setTimeline({ rows: fresh, loading: false });
+            refetchAddresses(fresh, attempt + 1);
+          })
+          .catch(() => {});
+      }, Math.min(2500 + missing * 1200, 15000));
+    };
     setTimeline({ rows: [], loading: true });
     setStat(null);
     getDeviceTimeline(deviceId, range.from, range.to)
-      .then((rows) => { if (alive) setTimeline({ rows, loading: false }); })
+      .then((rows) => { if (alive) { setTimeline({ rows, loading: false }); refetchAddresses(rows, 0); } })
       .catch((error) => { if (alive) setTimeline({ rows: [], loading: false, error: error.message }); });
     getDeviceStats({ deviceId, from: range.from, to: range.to })
       .then((rows) => { if (alive) setStat(rows[0] ?? { distanceMeters: 0, maxSpeedKnots: 0, overspeedCount: 0 }); })
       .catch(() => { if (alive) setStat(null); });
-    return () => { alive = false; };
+    return () => { alive = false; clearTimeout(retryTimer); };
   }, [deviceId, range]);
 
   const summary = useMemo(
@@ -206,11 +221,13 @@ export default function MobileDayPanel({ vehicle, onClose, routeKey, showRoute }
                     </>
                   )}
                 </div>
-                {!trip && s.address && (
+                {!trip && (s.address ? (
                   <div className="text-muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {s.address}
                   </div>
-                )}
+                ) : (
+                  <div className="text-muted" style={{ fontStyle: 'italic', opacity: 0.7 }}>адрес определяется…</div>
+                ))}
               </div>
             </div>
           );

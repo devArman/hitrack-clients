@@ -32,6 +32,10 @@ export default function MapView({ vehicles, devices, positions, focus, mapGroupP
   const [activeTrip, setActiveTrip] = useState(null);
 
   const clearTrips = () => { setTimeline(null); setTrack(null); setActiveTrip(null); };
+  // защита от гонок: ответ устаревшего запроса ленты (другая машина/день) игнорируем
+  const timelineReq = useRef(0);
+  const retryTimer = useRef(null);
+  useEffect(() => () => clearTimeout(retryTimer.current), []);
 
 
   const [groupDialog, setGroupDialog] = useState(null); // { group: null|{} }
@@ -104,16 +108,37 @@ export default function MapView({ vehicles, devices, positions, focus, mapGroupP
   };
 
   const loadTimeline = async (deviceId, range) => {
+    const req = ++timelineReq.current;
+    clearTimeout(retryTimer.current);
     setTrack(null);
     setActiveTrip(null);
     setTimeline({ rows: [], loading: true });
     try {
       // сегменты короче 100 м бэкенд уже приклеил к стоянке
       const rows = await getDeviceTimeline(deviceId, range.from, range.to);
+      if (req !== timelineReq.current) return;
       setTimeline({ rows, loading: false });
+      scheduleAddressRefetch(deviceId, range, rows, req, 0);
     } catch (error) {
-      setTimeline({ rows: [], loading: false, error: error.message });
+      if (req === timelineReq.current) setTimeline({ rows: [], loading: false, error: error.message });
     }
+  };
+
+  // адреса стоянок бэкенд геокодит фоном (~1 адрес/с, лимит Nominatim) —
+  // тихо перезапрашиваем ленту, пока не доедут все или не кончатся попытки
+  const scheduleAddressRefetch = (deviceId, range, rows, req, attempt) => {
+    const missing = rows.filter((s) => s.type === 'park' && !s.address).length;
+    if (!missing || attempt >= 4) return;
+    const delay = Math.min(2500 + missing * 1200, 15000);
+    retryTimer.current = setTimeout(async () => {
+      if (req !== timelineReq.current) return;
+      try {
+        const fresh = await getDeviceTimeline(deviceId, range.from, range.to);
+        if (req !== timelineReq.current) return;
+        setTimeline({ rows: fresh, loading: false });
+        scheduleAddressRefetch(deviceId, range, fresh, req, attempt + 1);
+      } catch { /* фоновый дозапрос — ошибки не показываем */ }
+    }, delay);
   };
 
   const showTripTrack = async (trip, index) => {
@@ -519,11 +544,13 @@ function DetailPanel({ v, stat, onClose, timeline, activeTrip, onLoadTimeline, o
                         </>
                       )}
                     </div>
-                    {!trip && s.address && (
+                    {!trip && (s.address ? (
                       <div className="text-muted" style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {s.address}
                       </div>
-                    )}
+                    ) : (
+                      <div className="text-muted" style={{ fontStyle: 'italic', opacity: 0.7 }}>адрес определяется…</div>
+                    ))}
                   </div>
                 </div>
               );
